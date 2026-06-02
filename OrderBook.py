@@ -189,7 +189,7 @@ def join_trades_with_latest_snapshot():
             'symbol': symbol,
             'side':side,
             'trade_price':price,
-            'qty':qty,
+            'qty':snapshot['qty'],
             'mid_before':snapshot['mid_price'],
             'spread_before':snapshot['spread'],
             'imbalance_before':snapshot['imbalance'],
@@ -238,6 +238,69 @@ def post_trade_analysis(ts_ms_after:int = 5000):
 
 
 #part F
+def check_imbalance_predicts_price_movement(ts_ms_after:int = 5000):
+    book_data = pd.read_csv['book_data.csv']
+    orderbook_manager = OrderbookManager()
+    curr_ts_ms = 0 
+    analysis_df = pd.DataFrame()
+    while curr_ts_ms < max(book_data['ts_ms']):
+        for exchange, symbol in book_data['exchange', 'symbol'].unique():
+            #curr imbalance
+            orderboook_manager = construct_orderbook_till_ts_ms(orderbook_manager, curr_ts_ms, book_data, exchange, symbol)
+            imbalance = orderbook_manager[exchange][symbol].get_imbalance()
+            curr_mid = orderbook_manager[exchange][symbol].get_effective_mid()
+            # future mid
+            curr_ts_ms += ts_ms_after
+            orderboook_manager = construct_orderbook_till_ts_ms(orderbook_manager, curr_ts_ms, book_data, exchange, symbol)
+            future_mid = orderbook_manager[exchange][symbol].get_effective_mid()
+            future_return_bps = (future_mid- curr_mid).curr_mid * 10000
+
+
+            analysis_df.append({'ts_ms': curr_ts_ms-ts_ms_after,'imbalance': imbalance, 'futre_return_bps': future_return_bps})
+    analysis_df['sign_imbalance'] = analysis_df['imbalance'].apply(lambda x: 1 if x >0 else -1 if x<0 else 0)
+    output = pd.DataFrame()
+    #test stat significant
+    # test two groups distribution 
+    from scipy.stats import ttest_ind, pearsonr
+    positive_imb = analysis_df[analysis_df['imbalance']>0]['future_return_bps']
+    negative_imb = analysis_df[analysis_df['imbalance']<0 ]['future_return_bps']
+    t_stat, p_value = ttest_ind( positive_imb, negative_imb)
+    output['positive_imb_mean'] = positive_imb.mean()
+    output['negative_imb_mean'] = negative_imb.mean()
+    output['sign_imb_t_stat'] = t_stat
+    output['sign_imb_p_value'] = p_value
+
+    # test corr 
+    corr, p_value = pearsonr(analysis_df['imablance'], analysis_df['future_return_bps'])
+    output['corr'] = corr
+    output['corr_p_value'] = p_value
+
+    return output
+
+#part G
+
+def calcualte_net_edge (sell_bid, buy_ask, sell_fee_bps, buy_fee_bps):
+    return sell_bid * (1-sell_fee_bps/1e4) - buy_ask * (1 +buy_fee_bps/1e4)
+def check_cross_exchange_arbitarge(book_data:pd.DataFrame, taker_fee_bps:float = 5.0):
+    orderbook_manager = OrderbookManager()
+    opportunity_df = pd.DataFrame()
+    for row in book_data.iterrows():
+        ts_ms = row['ts_ms']
+        orderbook_manager = construct_orderbook_till_ts_ms(orderbook_manager, ts_ms,book_data, row['exchange'], row['symbol'])
+        curr_bbo_bid = orderbook_manager[row['exchange']][row['symbol']].get_bbo("bid")
+        curr_bbo_ask = orderbook_manager[row['exchange']][row['symbol']].get_bbo("ask")
+        
+        for exchange,symbol in orderbook_manager.orderbooks.keys():
+            if (symbol == row['symbol']) & (exchange != row['exchange']):
+                exchange_last_bbo_bid = orderbook_manager[exchange][symbol].get_bbo("bid")
+                exchange_last_bbo_ask = orderbook_manager[exchange][symbol].get_bbo("ask")
+                if exchange_last_bbo_bid> curr_bbo_ask:
+                    net_edge = calcualte_net_edge(exchange_last_bbo_bid, curr_bbo_ask, taker_fee_bps, taker_fee_bps)
+                    if net_edge >0:
+                        opportunity_df.append({'ts_ms':ts_ms,'sell_venue': row['exchange'], 'buy_venue': exchange , 'buy_ask':curr_bbo_ask,'sell_bid': exchange_last_bbo_bid,'net_edge':net_edge,'net_edge_bps':net_edge/curr_bbo_ask*1e4})
+    return opprtunity_df
+
+
 
 
 def main():
