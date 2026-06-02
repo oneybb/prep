@@ -14,14 +14,14 @@ class ExchangeSymbolOrderbook:
             if price in self.bids:
                 if size <=0 :
                     self.bids.pop(price)
-                self.bids[price] = {"size": size, "ts_ms": ts_ms}
- 
+                else:
+                    self.bids[price] = {"size": size, "ts_ms": ts_ms}
         elif side == "ask":
             if price in self.asks:
                 if size <=0 :
                     self.asks.pop(price)
-                self.asks[price] =  {"size": size, "ts_ms": ts_ms}
- 
+                else:
+                    self.asks[price] =  {"size": size, "ts_ms": ts_ms}
         else:
             raise ValueError(f"Invalid side: {side}")
 
@@ -87,6 +87,8 @@ class OrderbookManager:
         side = str(row['side']).lower()
         price = float(row['price'])
         size = float(row['size'])
+        if exchange not in self.orderbooks:
+            self.orderbooks[exchange] ={}
         if symbol not in self.orderbooks[exchange]:
             self.orderbooks[exchange][symbol] = ExchangeSymbolOrderbook(exchange, symbol)
         self.orderbooks[exchange][symbol].update_symbol_orderbook(side, price, size)
